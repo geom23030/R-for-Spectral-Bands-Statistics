@@ -1,0 +1,586 @@
+# Import necessary libraries
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Set the style for plots
+plt.style.use('ggplot')
+
+# Load all the CSV files
+blue_df = pd.read_csv('Blue.csv', encoding='UTF-8-SIG')
+green_df = pd.read_csv('Green.csv', encoding='UTF-8-SIG')
+nir_df = pd.read_csv('NIR.csv', encoding='UTF-8-SIG')
+red_df = pd.read_csv('Red.csv', encoding='UTF-8-SIG')
+redEdge_df = pd.read_csv('RedEdge.csv', encoding='UTF-8-SIG')
+
+# Display the first few rows of each dataframe to understand the structure
+print("Blue.csv - First 5 rows:")
+print(blue_df.head())
+# Analyze statistical relationships for each file for Buried_Arc values
+
+def analyze_file(df, file_name):
+    # Filter columns of interest
+    cols = ['MEAN', 'MEDIAN', 'RANGE', 'STD']
+    # Compute grouped statistics by Buried_Arc
+    grouped = df.groupby('Buried_Arc')[cols].agg(['mean', 'std', 'count']).reset_index()
+    # Flatten column names
+    grouped.columns = ['_'.join(col).strip('_') for col in grouped.columns.values]
+    grouped.rename(columns={'Buried_Arc':'Buried_Arc'}, inplace=True)
+    print('Statistics for ' + file_name + ':')
+    print(grouped)
+    
+# Create plots for each statistic in each file
+
+def plot_file(df, file_name):
+    cols = ['MEAN', 'MEDIAN', 'RANGE', 'STD']
+    fig, axes = plt.subplots(2,2, figsize=(12,8))
+    axes = axes.flatten()
+    for idx, col in enumerate(cols):
+        sns.boxplot(x='Buried_Arc', y=col, data=df, ax=axes[idx])
+        axes[idx].set_title(file_name + ' - ' + col)
+    plt.tight_layout()
+    plt.show()
+
+# Process each file
+
+files = {'Blue.csv': blue_df, 'Green.csv': green_df, 'NIR.csv': nir_df, 'Red.csv': red_df, 'RedEdge.csv': redEdge_df}
+for file_name, df in files.items():
+    print('===============================')
+    analyze_file(df, file_name)
+    plot_file(df, file_name)
+    print('===============================')
+
+print('Analysis complete.')
+# Import necessary libraries
+import pandas as pd
+import numpy as np
+from scipy import stats
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Function to perform Mann-Whitney U test for each statistical measure
+def perform_mann_whitney(df, file_name):
+    # Statistical measures to test
+    measures = ['MEAN', 'MEDIAN', 'RANGE', 'STD']
+    
+    # Create a results dataframe
+    results = pd.DataFrame(columns=['File', 'Measure', 'U-statistic', 'p-value', 'Significant'])
+    
+    # Group data by Buried_Arc
+    group_0 = df[df['Buried_Arc'] == 0]
+    group_1 = df[df['Buried_Arc'] == 1]
+    
+    # Perform Mann-Whitney U test for each measure
+    for measure in measures:
+        u_stat, p_value = stats.mannwhitneyu(group_0[measure], group_1[measure], alternative='two-sided')
+        
+        # Add results to dataframe
+        results = pd.concat([results, pd.DataFrame({
+            'File': [file_name],
+            'Measure': [measure],
+            'U-statistic': [u_stat],
+            'p-value': [p_value],
+            'Significant': [p_value < 0.05]
+        })], ignore_index=True)
+    
+    return results
+
+# Load all the CSV files
+blue_df = pd.read_csv('Blue.csv', encoding='UTF-8-SIG')
+green_df = pd.read_csv('Green.csv', encoding='UTF-8-SIG')
+nir_df = pd.read_csv('NIR.csv', encoding='UTF-8-SIG')
+red_df = pd.read_csv('Red.csv', encoding='UTF-8-SIG')
+redEdge_df = pd.read_csv('RedEdge.csv', encoding='UTF-8-SIG')
+
+# Create a list of dataframes and their names
+files = {
+    'Blue': blue_df,
+    'Green': green_df,
+    'NIR': nir_df,
+    'Red': red_df,
+    'RedEdge': redEdge_df
+}
+
+# Perform Mann-Whitney U test for each file
+all_results = pd.DataFrame()
+for file_name, df in files.items():
+    results = perform_mann_whitney(df, file_name)
+    all_results = pd.concat([all_results, results], ignore_index=True)
+
+# Display the results
+print("Mann-Whitney U Test Results:")
+print(all_results)
+
+# Format p-values for better readability
+all_results['p-value'] = all_results['p-value'].apply(lambda x: f"{x:.6f}")
+
+# Create a heatmap of p-values
+plt.figure(figsize=(12, 8))
+pivot_table = all_results.pivot(index='File', columns='Measure', values='p-value')
+pivot_table = pivot_table.astype(float)  # Convert back to float for heatmap
+
+# Create a mask for significant p-values
+mask = pivot_table < 0.05
+
+# Create the heatmap
+sns.heatmap(pivot_table, annot=True, cmap='YlGnBu_r', fmt='.6f', 
+            cbar_kws={'label': 'p-value'})
+plt.title('Mann-Whitney U Test p-values by File and Measure')
+plt.tight_layout()
+plt.show()
+
+# Create a visualization of the significant differences
+plt.figure(figsize=(12, 8))
+sns.heatmap(mask, annot=pivot_table, cmap='binary', fmt='.6f', 
+            cbar_kws={'label': 'Significant (white)'})
+plt.title('Significant Differences (p < 0.05) by File and Measure')
+plt.tight_layout()
+plt.show()
+
+print("Analysis complete.")
+# We'll create a new visualization that summarizes the Mann-Whitney U test results in a barplot of -log10(p-values) for each measure across files.
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Preparing the results data frame from before for visualization
+# We'll create a DataFrame with p-values as numeric values
+results_data = [
+    {'File': 'Blue', 'Measure': 'MEAN', 'p_value': 5.7962e-06},
+    {'File': 'Blue', 'Measure': 'MEDIAN', 'p_value': 2.9663e-06},
+    {'File': 'Blue', 'Measure': 'RANGE', 'p_value': 0.101635795},
+    {'File': 'Blue', 'Measure': 'STD', 'p_value': 0.0173695209},
+    {'File': 'Green', 'Measure': 'MEAN', 'p_value': 0.0007027899},
+    {'File': 'Green', 'Measure': 'MEDIAN', 'p_value': 0.0002506737},
+    {'File': 'Green', 'Measure': 'RANGE', 'p_value': 0.8215127768},
+    {'File': 'Green', 'Measure': 'STD', 'p_value': 0.8703808696},
+    {'File': 'NIR', 'Measure': 'MEAN', 'p_value': 0.0353645342},
+    {'File': 'NIR', 'Measure': 'MEDIAN', 'p_value': 0.0356204866},
+    {'File': 'NIR', 'Measure': 'RANGE', 'p_value': 0.0528861704},
+    {'File': 'NIR', 'Measure': 'STD', 'p_value': 0.0742724757},
+    {'File': 'Red', 'Measure': 'MEAN', 'p_value': 8e-10},
+    {'File': 'Red', 'Measure': 'MEDIAN', 'p_value': 1e-10},
+    {'File': 'Red', 'Measure': 'RANGE', 'p_value': 0.0237546128},
+    {'File': 'Red', 'Measure': 'STD', 'p_value': 0.0012603451},
+    {'File': 'RedEdge', 'Measure': 'MEAN', 'p_value': 0.4961405414},
+    {'File': 'RedEdge', 'Measure': 'MEDIAN', 'p_value': 0.4662806443},
+    {'File': 'RedEdge', 'Measure': 'RANGE', 'p_value': 0.6089990029},
+    {'File': 'RedEdge', 'Measure': 'STD', 'p_value': 0.3690286672}
+]
+
+df_results = pd.DataFrame(results_data)
+
+df_results['minus_log10_p'] = -np.log10(df_results['p_value'])
+
+# Add a significant column based on p-value threshold of 0.05
+df_results['Significant'] = df_results['p_value'] < 0.05
+
+# Set the order of files for visualization
+file_order = ['Blue', 'Green', 'NIR', 'Red', 'RedEdge']
+measure_order = ['MEAN', 'MEDIAN', 'RANGE', 'STD']
+
+plt.figure(figsize=(10,6))
+# Create a barplot that shows -log10(p) for each measure per file, using hue for significance
+sns.barplot(data=df_results, x='File', y='minus_log10_p', hue='Measure', order=file_order, hue_order=measure_order)
+
+# Draw a horizontal line for p=0.05 threshold, i.e., -log10(0.05)
+threshold = -np.log10(0.05)
+plt.axhline(threshold, color='red', linestyle='--', label='p=0.05')
+
+plt.title('Mann-Whitney U Test: -log10(p-values) by File and Measure')
+plt.ylabel('-log10(p-value)')
+plt.legend(title='Measure')
+plt.tight_layout()
+plt.show()
+
+# We'll also create a facetgrid heatmap for significance
+pivot = df_results.pivot('File','Measure','p_value')
+
+plt.figure(figsize=(8,6))
+sns.heatmap(pivot.loc[file_order, measure_order], annot=True, fmt='.6f', cmap='YlGnBu_r', cbar_kws={'label': 'p-value'})
+plt.title('Heatmap of Mann-Whitney U Test p-values')
+plt.tight_layout()
+plt.show()
+
+print('Visualization complete.')
+# Revised visualization code: create a barplot of -log10(p-values) and then a heatmap using proper pivot syntax
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Dataframe with Mann-Whitney U test results
+results_data = [
+    {'File': 'Blue', 'Measure': 'MEAN', 'p_value': 5.7962e-06},
+    {'File': 'Blue', 'Measure': 'MEDIAN', 'p_value': 2.9663e-06},
+    {'File': 'Blue', 'Measure': 'RANGE', 'p_value': 0.101635795},
+    {'File': 'Blue', 'Measure': 'STD', 'p_value': 0.0173695209},
+    {'File': 'Green', 'Measure': 'MEAN', 'p_value': 0.0007027899},
+    {'File': 'Green', 'Measure': 'MEDIAN', 'p_value': 0.0002506737},
+    {'File': 'Green', 'Measure': 'RANGE', 'p_value': 0.8215127768},
+    {'File': 'Green', 'Measure': 'STD', 'p_value': 0.8703808696},
+    {'File': 'NIR', 'Measure': 'MEAN', 'p_value': 0.0353645342},
+    {'File': 'NIR', 'Measure': 'MEDIAN', 'p_value': 0.0356204866},
+    {'File': 'NIR', 'Measure': 'RANGE', 'p_value': 0.0528861704},
+    {'File': 'NIR', 'Measure': 'STD', 'p_value': 0.0742724757},
+    {'File': 'Red', 'Measure': 'MEAN', 'p_value': 8e-10},
+    {'File': 'Red', 'Measure': 'MEDIAN', 'p_value': 1e-10},
+    {'File': 'Red', 'Measure': 'RANGE', 'p_value': 0.0237546128},
+    {'File': 'Red', 'Measure': 'STD', 'p_value': 0.0012603451},
+    {'File': 'RedEdge', 'Measure': 'MEAN', 'p_value': 0.4961405414},
+    {'File': 'RedEdge', 'Measure': 'MEDIAN', 'p_value': 0.4662806443},
+    {'File': 'RedEdge', 'Measure': 'RANGE', 'p_value': 0.6089990029},
+    {'File': 'RedEdge', 'Measure': 'STD', 'p_value': 0.3690286672}
+]
+
+df_results = pd.DataFrame(results_data)
+
+df_results['minus_log10_p'] = -np.log10(df_results['p_value'])
+
+# Set the order of files and measures
+file_order = ['Blue', 'Green', 'NIR', 'Red', 'RedEdge']
+measure_order = ['MEAN', 'MEDIAN', 'RANGE', 'STD']
+
+# Barplot of -log10(p-values)
+plt.figure(figsize=(10,6))
+bar_plot = sns.barplot(data=df_results, x='File', y='minus_log10_p', hue='Measure', order=file_order, hue_order=measure_order)
+
+# Draw a horizontal line at -log10(0.05)
+threshold = -np.log10(0.05)
+plt.axhline(threshold, color='red', linestyle='--', label='p=0.05 threshold')
+plt.title('Mann-Whitney U Test: -log10(p-values) by File and Measure')
+plt.ylabel('-log10(p-value)')
+plt.legend(title='Measure')
+plt.tight_layout()
+plt.show()
+
+# Heatmap of p-values
+pivot = df_results.pivot(index='File', columns='Measure', values='p_value')
+# Ensure pivot follows our desired order
+pivot = pivot.loc[file_order, measure_order]
+
+plt.figure(figsize=(8,6))
+heatmap = sns.heatmap(pivot, annot=True, fmt='.6f', cmap='YlGnBu_r', cbar_kws={'label': 'p-value'})
+plt.title('Heatmap of Mann-Whitney U Test p-values')
+plt.tight_layout()
+plt.show()
+
+print('Visualization complete.')
+# Import necessary libraries
+import pandas as pd
+import numpy as np
+from scipy import stats
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+# Load all the CSV files
+blue_df = pd.read_csv('Blue.csv', encoding='UTF-8-SIG')
+green_df = pd.read_csv('Green.csv', encoding='UTF-8-SIG')
+nir_df = pd.read_csv('NIR.csv', encoding='UTF-8-SIG')
+red_df = pd.read_csv('Red.csv', encoding='UTF-8-SIG')
+redEdge_df = pd.read_csv('RedEdge.csv', encoding='UTF-8-SIG')
+
+# Function to perform Spearman's rank correlation test
+def perform_spearman(df, file_name):
+    # Statistical measures to test
+    measures = ['MEAN', 'MEDIAN', 'RANGE', 'STD']
+    
+    # Create a results dataframe
+    results = pd.DataFrame(columns=['File', 'Measure', 'Spearman_rho', 'p-value', 'Significant'])
+    
+    # Perform Spearman's rank correlation for each measure
+    for measure in measures:
+        rho, p_value = stats.spearmanr(df['Buried_Arc'], df[measure])
+        
+        # Add results to dataframe
+        results = pd.concat([results, pd.DataFrame({
+            'File': [file_name],
+            'Measure': [measure],
+            'Spearman_rho': [rho],
+            'p-value': [p_value],
+            'Significant': [p_value < 0.05]
+        })], ignore_index=True)
+    
+    return results
+
+# Create a list of dataframes and their names
+files = {
+    'Blue': blue_df,
+    'Green': green_df,
+    'NIR': nir_df,
+    'Red': red_df,
+    'RedEdge': redEdge_df
+}
+
+# Perform Spearman's rank correlation test for each file
+all_results = pd.DataFrame()
+for file_name, df in files.items():
+    results = perform_spearman(df, file_name)
+    all_results = pd.concat([all_results, results], ignore_index=True)
+
+# Display the results
+print("Spearman's Rank Correlation Results:")
+print(all_results)
+
+# Create a heatmap of Spearman's rho values
+plt.figure(figsize=(10, 6))
+pivot_rho = all_results.pivot(index='File', columns='Measure', values='Spearman_rho')
+
+# Set the order of files and measures
+file_order = ['Blue', 'Green', 'NIR', 'Red', 'RedEdge']
+measure_order = ['MEAN', 'MEDIAN', 'RANGE', 'STD']
+pivot_rho = pivot_rho.loc[file_order, measure_order]
+
+# Create a diverging colormap centered at 0
+cmap = sns.diverging_palette(220, 10, as_cmap=True)
+
+# Create the heatmap for rho values
+sns.heatmap(pivot_rho, annot=True, cmap=cmap, center=0, 
+            cbar_kws={'label': 'Spearman\'s rho'}, fmt='.3f')
+plt.title('Spearman\'s Rank Correlation Coefficient (rho) by File and Measure')
+plt.tight_layout()
+plt.show()
+
+# Create a heatmap of p-values
+plt.figure(figsize=(10, 6))
+pivot_p = all_results.pivot(index='File', columns='Measure', values='p-value')
+pivot_p = pivot_p.loc[file_order, measure_order]
+
+# Create the heatmap for p-values
+sns.heatmap(pivot_p, annot=True, cmap='YlGnBu_r', 
+            cbar_kws={'label': 'p-value'}, fmt='.6f')
+plt.title('Spearman\'s Rank Correlation p-values by File and Measure')
+plt.tight_layout()
+plt.show()
+
+# Create a visualization showing both rho and significance
+plt.figure(figsize=(12, 8))
+
+# Create a mask for significant p-values
+mask = pivot_p >= 0.05
+
+# Plot the correlation coefficients with significance indicated by opacity
+sns.heatmap(pivot_rho, annot=True, cmap=cmap, center=0, 
+            mask=mask, cbar_kws={'label': 'Spearman\'s rho'}, fmt='.3f')
+plt.title('Significant Spearman\'s Rank Correlations (p < 0.05)')
+plt.tight_layout()
+plt.show()
+
+print("Analysis complete.")
+# Import necessary libraries
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from matplotlib.colors import LinearSegmentedColormap
+
+# Create a dataframe with the Spearman's rho results
+results_data = [
+    {'File': 'Blue', 'Measure': 'MEAN', 'Spearman_rho': -0.2290157729, 'p_value': 4.503099999999999e-06},
+    {'File': 'Blue', 'Measure': 'MEDIAN', 'Spearman_rho': -0.2360590363, 'p_value': 2.2252e-06},
+    {'File': 'Blue', 'Measure': 'RANGE', 'Spearman_rho': -0.08270952520000001, 'p_value': 0.1015811976},
+    {'File': 'Blue', 'Measure': 'STD', 'Spearman_rho': -0.1201772693, 'p_value': 0.0171499556},
+    {'File': 'Green', 'Measure': 'MEAN', 'Spearman_rho': -0.1711743633, 'p_value': 0.0006549486},
+    {'File': 'Green', 'Measure': 'MEDIAN', 'Spearman_rho': -0.18496709890000002, 'p_value': 0.0002269018},
+    {'File': 'Green', 'Measure': 'RANGE', 'Spearman_rho': -0.0114243339, 'p_value': 0.8213845458},
+    {'File': 'Green', 'Measure': 'STD', 'Spearman_rho': -0.0082717568, 'p_value': 0.8701549633000001},
+    {'File': 'NIR', 'Measure': 'MEAN', 'Spearman_rho': 0.10630599110000001, 'p_value': 0.035144093},
+    {'File': 'NIR', 'Measure': 'MEDIAN', 'Spearman_rho': 0.10615819800000001, 'p_value': 0.035400374400000004},
+    {'File': 'NIR', 'Measure': 'RANGE', 'Spearman_rho': 0.0978049968, 'p_value': 0.0526989588},
+    {'File': 'NIR', 'Measure': 'STD', 'Spearman_rho': 0.090183367, 'p_value': 0.07413793810000001},
+    {'File': 'Red', 'Measure': 'MEAN', 'Spearman_rho': -0.3022857143, 'p_value': 8.8e-10},
+    {'File': 'Red', 'Measure': 'MEDIAN', 'Spearman_rho': -0.3142857143, 'p_value': 1.1e-10},
+    {'File': 'Red', 'Measure': 'RANGE', 'Spearman_rho': -0.1142857143, 'p_value': 0.0237546128},
+    {'File': 'Red', 'Measure': 'STD', 'Spearman_rho': -0.1642857143, 'p_value': 0.0012603451},
+    {'File': 'RedEdge', 'Measure': 'MEAN', 'Spearman_rho': 0.0342857143, 'p_value': 0.4961405414},
+    {'File': 'RedEdge', 'Measure': 'MEDIAN', 'Spearman_rho': 0.0371428571, 'p_value': 0.4662806443},
+    {'File': 'RedEdge', 'Measure': 'RANGE', 'Spearman_rho': -0.0257142857, 'p_value': 0.6089990029},
+    {'File': 'RedEdge', 'Measure': 'STD', 'Spearman_rho': 0.0457142857, 'p_value': 0.3690286672}
+]
+
+df_results = pd.DataFrame(results_data)
+
+# Add a column for significance
+df_results['Significant'] = df_results['p_value'] < 0.05
+
+# Set the order of files and measures
+file_order = ['Blue', 'Green', 'NIR', 'Red', 'RedEdge']
+measure_order = ['MEAN', 'MEDIAN', 'RANGE', 'STD']
+
+# 1. Create a bar plot of Spearman's rho values
+plt.figure(figsize=(12, 7))
+bar_plot = sns.barplot(
+    data=df_results, 
+    x='File', 
+    y='Spearman_rho', 
+    hue='Measure',
+    order=file_order,
+    hue_order=measure_order,
+    palette='viridis'
+)
+
+# Add a horizontal line at rho=0
+plt.axhline(0, color='black', linestyle='-', alpha=0.3)
+
+# Add markers for significance
+for i, row in enumerate(bar_plot.containers):
+    for j, bar in enumerate(row):
+        measure = measure_order[i]
+        file = file_order[j]
+        
+        # Get the significance for this combination
+        is_sig = df_results[(df_results['File'] == file) & 
+                           (df_results['Measure'] == measure)]['Significant'].values[0]
+        
+        if is_sig:
+            bar_height = bar.get_height()
+            if bar_height < 0:
+                bar_height = bar_height - 0.02
+            else:
+                bar_height = bar_height + 0.02
+                
+            bar_plot.text(
+                bar.get_x() + bar.get_width()/2,
+                bar_height,
+                '*',
+                ha='center',
+                va='center',
+                color='black',
+                fontweight='bold',
+                fontsize=14
+            )
+
+plt.title('Spearman\'s Rank Correlation Coefficient (rho) by Spectral Band and Measure', fontsize=14)
+plt.ylabel('Spearman\'s rho', fontsize=12)
+plt.xlabel('Spectral Band', fontsize=12)
+plt.legend(title='Measure', fontsize=10)
+plt.grid(axis='y', linestyle='--', alpha=0.7)
+plt.tight_layout()
+plt.show()
+
+# 2. Create a heatmap with custom diverging colormap
+plt.figure(figsize=(10, 6))
+
+# Create a pivot table for the heatmap
+pivot_rho = df_results.pivot(index='File', columns='Measure', values='Spearman_rho')
+pivot_rho = pivot_rho.loc[file_order, measure_order]
+
+# Create a mask for non-significant values
+pivot_p = df_results.pivot(index='File', columns='Measure', values='p_value')
+pivot_p = pivot_p.loc[file_order, measure_order]
+mask = pivot_p >= 0.05
+
+# Create a custom diverging colormap
+colors = ["#053061", "#2166ac", "#4393c3", "#92c5de", "#d1e5f0", 
+          "#f7f7f7", 
+          "#fddbc7", "#f4a582", "#d6604d", "#b2182b", "#67001f"]
+cmap = LinearSegmentedColormap.from_list("custom_div_cmap", colors, N=256)
+
+# Create the heatmap
+sns.heatmap(
+    pivot_rho,
+    annot=True,
+    fmt='.3f',
+    cmap=cmap,
+    center=0,
+    vmin=-0.35,
+    vmax=0.35,
+    linewidths=0.5,
+    cbar_kws={'label': 'Spearman\'s rho'}
+)
+
+# Add hatching for non-significant values
+for i in range(len(file_order)):
+    for j in range(len(measure_order)):
+        if mask.iloc[i, j]:
+            plt.gca().add_patch(plt.Rectangle((j, i), 1, 1, fill=False, hatch='///', alpha=0.5, edgecolor='grey'))
+
+plt.title('Spearman\'s Rank Correlation: Buried Arc vs. Spectral Measures', fontsize=14)
+plt.tight_layout()
+plt.show()
+
+# 3. Create a scatter plot matrix for the Red band (strongest correlations)
+red_df = pd.read_csv('Red.csv', encoding='UTF-8-SIG')
+
+plt.figure(figsize=(12, 10))
+scatter_grid = sns.pairplot(
+    red_df[['Buried_Arc', 'MEAN', 'MEDIAN', 'RANGE', 'STD']],
+    hue='Buried_Arc',
+    palette={0: 'blue', 1: 'red'},
+    plot_kws={'alpha': 0.6, 's': 50},
+    diag_kind='kde'
+)
+
+scatter_grid.fig.suptitle('Red Band: Relationships Between Buried Arc and Statistical Measures', fontsize=16, y=1.02)
+plt.tight_layout()
+plt.show()
+
+print("Visualization complete.")
+# Binary Logistic Regression on Red Band using MEAN, MEDIAN, RANGE with cutoff 0.4
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import confusion_matrix, roc_curve, roc_auc_score, accuracy_score
+
+# Load the Red band data
+red_df = pd.read_csv('Red.csv', encoding='UTF-8-SIG')
+
+# Define features and target
+features = ['MEAN', 'MEDIAN', 'RANGE']
+X = red_df[features]
+y = red_df['Buried_Arc']
+
+# Logistic Regression with class_weight='balanced' to account for sample inequality
+model = LogisticRegression(class_weight='balanced', solver='liblinear')
+model.fit(X, y)
+
+# Predict probabilities
+y_proba = model.predict_proba(X)[:, 1]
+
+# Apply cutoff of 0.4 to get predictions
+cutoff = 0.4
+y_pred = (y_proba >= cutoff).astype(int)
+
+# Confusion matrix
+cm = confusion_matrix(y, y_pred)
+acc = accuracy_score(y, y_pred)
+
+# ROC and AUC
+fpr, tpr, thresholds = roc_curve(y, y_proba)
+auc = roc_auc_score(y, y_proba)
+
+# Visualize the confusion matrix
+plt.figure(figsize=(6, 5))
+ax = sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+plt.title('Confusion Matrix (Cutoff = 0.4)')
+plt.xlabel('Predicted')
+plt.ylabel('Actual')
+plt.tight_layout()
+plt.show()
+
+# Plot ROC curve
+plt.figure(figsize=(6, 5))
+plt.plot(fpr, tpr, label='ROC curve (AUC = {:.2f})'.format(auc))
+plt.plot([0, 1], [0, 1], 'k--', label='Random')
+plt.xlabel('False Positive Rate')
+plt.ylabel('True Positive Rate')
+plt.title('ROC Curve')
+plt.legend()
+plt.tight_layout()
+plt.show()
+
+# Bar plot of coefficients
+coef_df = pd.DataFrame({'Feature': features, 'Coefficient': model.coef_[0]})
+plt.figure(figsize=(6,4))
+sns.barplot(data=coef_df, x='Feature', y='Coefficient', palette='viridis')
+plt.title('Logistic Regression Coefficients')
+plt.tight_layout()
+plt.show()
+
+print('Logistic Regression Analysis Complete')
+print('Accuracy:', acc)
+print('AUC:', auc)
