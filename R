@@ -1,0 +1,632 @@
+# Load required library
+data_files <- c('Blue.csv', 'Green.csv', 'NIR.csv', 'Red.csv', 'RedEdge.csv')
+
+# We'll iterate over files, read them with read.csv, and then aggregate
+
+aggregate_results <- list()
+
+for(file in data_files){
+  # read the file
+  df <- read.csv(file, header=TRUE, stringsAsFactors = FALSE)
+  
+  # Check if necessary columns are there: MEAN, MEDIAN, RANGE, STD, Buried_Arc
+  required_cols <- c('MEAN', 'MEDIAN', 'RANGE', 'STD', 'Buried_Arc')
+  if(all(required_cols %in% names(df))){
+    # perform aggregation: we get mean value for each non-grouping column in each group
+    agg <- aggregate(df[, c('MEAN', 'MEDIAN', 'RANGE', 'STD')], by = list(Buried_Arc = df$Buried_Arc), FUN = mean, na.rm=TRUE)
+    aggregate_results[[file]] <- agg
+  } else {
+    aggregate_results[[file]] <- paste('Missing one or more required columns in', file)
+  }
+}
+
+# Print aggregated results for each file
+print('Aggregated summary for each file:')
+for(name in names(aggregate_results)){
+  cat('File: ', name, '\
+')
+  print(aggregate_results[[name]])
+  cat('\
+')
+}
+
+# Save results to an R object
+aggregate_results
+
+## Perform Mann-Whitney U tests (Wilcoxon rank-sum test) for each measurement by Buried_Arc group
+
+# List of files to process
+files <- c('Blue.csv', 'Green.csv', 'NIR.csv', 'Red.csv', 'RedEdge.csv')
+
+# Initialize list for test results
+test_results <- list()
+
+# Loop through files
+for (file in files) {
+  df <- read.csv(file, header=TRUE, stringsAsFactors = FALSE)
+  
+  # Check required columns
+  required_cols <- c('MEAN', 'MEDIAN', 'RANGE', 'STD', 'Buried_Arc')
+  if(!all(required_cols %in% names(df))){
+    test_results[[file]] <- paste('Missing required columns in', file)
+    next
+  }
+  
+  # Prepare list to store tests for each measurement
+  file_results <- list()
+  
+  for (measure in c('MEAN', 'MEDIAN', 'RANGE', 'STD')) {
+    # Extract measurements by group
+    group0 <- df[df$Buried_Arc == 0, measure]
+    group1 <- df[df$Buried_Arc == 1, measure]
+    
+    # Perform Mann-Whitney U test (wilcox.test in R) 
+    test <- wilcox.test(group0, group1)
+    
+    file_results[[measure]] <- list(
+      statistic = test$statistic,
+      p_value = test$p.value,
+      alternative = test$alternative
+    )
+  }
+  
+  test_results[[file]] <- file_results
+}
+
+# Print the test results
+print(test_results)
+
+test_results
+
+# Load necessary libraries
+if(!require(ggplot2)) install.packages("ggplot2", repos="https://cran.rstudio.com/", dependencies=FALSE)
+if(!require(reshape2)) install.packages("reshape2", repos="https://cran.rstudio.com/", dependencies=FALSE)
+if(!require(dplyr)) install.packages("dplyr", repos="https://cran.rstudio.com/", dependencies=FALSE)
+
+library(ggplot2)
+library(reshape2)
+library(dplyr)
+
+# List of files to process
+files <- c('Blue.csv', 'Green.csv', 'NIR.csv', 'Red.csv', 'RedEdge.csv')
+measures <- c('MEAN', 'MEDIAN', 'RANGE', 'STD')
+
+# Create a dataframe to store p-values
+p_values <- data.frame(
+  File = character(),
+  Measure = character(),
+  P_Value = numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Create a list to store boxplot data
+boxplot_data <- list()
+
+# Process each file
+for (file in files) {
+  # Extract band name from filename
+  band <- gsub(".csv", "", file)
+  
+  # Read the data
+  df <- read.csv(file, header=TRUE, stringsAsFactors = FALSE)
+  
+  # Store data for boxplots
+  boxplot_data[[band]] <- df
+  
+  # Perform Mann-Whitney U tests for each measure
+  for (measure in measures) {
+    # Extract measurements by group
+    group0 <- df[df$Buried_Arc == 0, measure]
+    group1 <- df[df$Buried_Arc == 1, measure]
+    
+    # Perform Mann-Whitney U test
+    test <- wilcox.test(group0, group1)
+    
+    # Store p-value
+    p_values <- rbind(p_values, data.frame(
+      File = band,
+      Measure = measure,
+      P_Value = test$p.value,
+      stringsAsFactors = FALSE
+    ))
+  }
+}
+
+# 1. Create a heatmap of p-values
+# Format p-values for better visualization
+p_values$Significance <- cut(p_values$P_Value, 
+                            breaks = c(0, 0.001, 0.01, 0.05, 1), 
+                            labels = c("p < 0.001", "p < 0.01", "p < 0.05", "Not Significant"),
+                            include.lowest = TRUE)
+
+# Create the heatmap
+p1 <- ggplot(p_values, aes(x = Measure, y = File, fill = Significance)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = sprintf("%.4f", P_Value)), color = "black", size = 3) +
+  scale_fill_manual(values = c("p < 0.001" = "#d73027", "p < 0.01" = "#fc8d59", 
+                              "p < 0.05" = "#fee090", "Not Significant" = "#e0e0e0")) +
+  theme_minimal() +
+  labs(title = "Mann-Whitney U Test P-Values by Band and Measure",
+       x = "Measure", y = "Spectral Band") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+print(p1)
+
+# 2. Create boxplots for each measure across bands
+# Prepare data for boxplots
+boxplot_combined <- data.frame()
+
+for (band in names(boxplot_data)) {
+  df <- boxplot_data[[band]]
+  df_long <- reshape2::melt(df[, c("Buried_Arc", measures)], 
+                           id.vars = "Buried_Arc", 
+                           variable.name = "Measure", 
+                           value.name = "Value")
+  df_long$Band <- band
+  boxplot_combined <- rbind(boxplot_combined, df_long)
+}
+
+# Convert Buried_Arc to factor with meaningful labels
+boxplot_combined$Buried_Arc <- factor(boxplot_combined$Buried_Arc, 
+                                     levels = c(0, 1),
+                                     labels = c("No Buried Feature", "Buried Feature"))
+
+# Create boxplots for each measure
+for (measure in measures) {
+  p <- ggplot(subset(boxplot_combined, Measure == measure), 
+             aes(x = Band, y = Value, fill = Buried_Arc)) +
+    geom_boxplot(alpha = 0.7, outlier.size = 1) +
+    scale_fill_manual(values = c("No Buried Feature" = "#4575b4", "Buried Feature" = "#d73027")) +
+    theme_minimal() +
+    labs(title = paste("Distribution of", measure, "Values by Band and Buried Feature Status"),
+         x = "Spectral Band", y = measure) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          legend.title = element_blank())
+  
+  print(p)
+}
+
+# 3. Create violin plots for the most significant differences
+# Filter for the most significant results (p < 0.01)
+sig_results <- p_values[p_values$P_Value < 0.01, ]
+
+# If there are significant results, create violin plots
+if(nrow(sig_results) > 0) {
+  for(i in 1:nrow(sig_results)) {
+    band <- sig_results$File[i]
+    measure <- sig_results$Measure[i]
+    
+    df <- boxplot_data[[band]]
+    df$Buried_Arc <- factor(df$Buried_Arc, 
+                           levels = c(0, 1),
+                           labels = c("No Buried Feature", "Buried Feature"))
+    
+    p <- ggplot(df, aes(x = Buried_Arc, y = df[[measure]], fill = Buried_Arc)) +
+      geom_violin(trim = FALSE, alpha = 0.7) +
+      geom_boxplot(width = 0.1, fill = "white", alpha = 0.5) +
+      scale_fill_manual(values = c("No Buried Feature" = "#4575b4", "Buried Feature" = "#d73027")) +
+      theme_minimal() +
+      labs(title = paste("Distribution of", measure, "in", band, "Band"),
+           subtitle = paste("p-value =", format(sig_results$P_Value[i], digits = 4)),
+           x = "", y = measure) +
+      theme(legend.position = "none")
+    
+    print(p)
+  }
+}
+# List of files and measures
+files <- c('Blue.csv', 'Green.csv', 'NIR.csv', 'Red.csv', 'RedEdge.csv')
+measures <- c('MEAN', 'MEDIAN', 'RANGE', 'STD')
+
+# Initialize a list for Spearman's rho results
+spearman_results <- list()
+
+for (file in files) {
+  df <- read.csv(file, header=TRUE, stringsAsFactors = FALSE)
+  
+  # Check required columns
+  required_cols <- c(measures, 'Buried_Arc')
+  if(!all(required_cols %in% names(df))){
+    spearman_results[[file]] <- paste('Missing required columns in', file)
+    next
+  }
+  
+  file_results <- list()
+  
+  for (measure in measures) {
+    # Compute Spearman's correlation between the measure and Buried_Arc
+    test <- cor.test(df[[measure]], df$Buried_Arc, method = 'spearman', exact = FALSE)
+    
+    file_results[[measure]] <- list(
+      rho = test$estimate,
+      p_value = test$p.value
+    )
+  }
+  
+  spearman_results[[file]] <- file_results
+}
+
+# Print the Spearman's correlation results
+print(spearman_results)
+
+spearman_results
+
+# Load necessary libraries
+if(!require(ggplot2)) install.packages("ggplot2", repos="https://cran.rstudio.com/", dependencies=FALSE)
+if(!require(reshape2)) install.packages("reshape2", repos="https://cran.rstudio.com/", dependencies=FALSE)
+if(!require(dplyr)) install.packages("dplyr", repos="https://cran.rstudio.com/", dependencies=FALSE)
+
+library(ggplot2)
+library(reshape2)
+library(dplyr)
+
+# List of files to process
+files <- c('Blue.csv', 'Green.csv', 'NIR.csv', 'Red.csv', 'RedEdge.csv')
+measures <- c('MEAN', 'MEDIAN', 'RANGE', 'STD')
+
+# Create a dataframe to store Spearman's rho results
+spearman_df <- data.frame(
+  Band = character(),
+  Measure = character(),
+  Rho = numeric(),
+  P_Value = numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Process each file
+for (file in files) {
+  # Extract band name from filename
+  band <- gsub(".csv", "", file)
+  
+  # Read the data
+  df <- read.csv(file, header=TRUE, stringsAsFactors = FALSE)
+  
+  # Perform Spearman's correlation for each measure
+  for (measure in measures) {
+    # Compute Spearman's correlation between the measure and Buried_Arc
+    test <- cor.test(df[[measure]], df$Buried_Arc, method = 'spearman', exact = FALSE)
+    
+    # Store results
+    spearman_df <- rbind(spearman_df, data.frame(
+      Band = band,
+      Measure = measure,
+      Rho = test$estimate,
+      P_Value = test$p.value,
+      stringsAsFactors = FALSE
+    ))
+  }
+}
+
+# 1. Create a heatmap of Spearman's rho values
+# Format p-values for better visualization
+spearman_df$Significance <- cut(spearman_df$P_Value, 
+                               breaks = c(0, 0.001, 0.01, 0.05, 1), 
+                               labels = c("p < 0.001", "p < 0.01", "p < 0.05", "Not Significant"),
+                               include.lowest = TRUE)
+
+# Create the heatmap for rho values
+p1 <- ggplot(spearman_df, aes(x = Measure, y = Band, fill = Rho)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = sprintf("%.3f", Rho)), color = "black", size = 3) +
+  scale_fill_gradient2(low = "#d73027", mid = "white", high = "#4575b4", midpoint = 0,
+                      limits = c(-0.4, 0.4), name = "Spearman's rho") +
+  theme_minimal() +
+  labs(title = "Spearman's Correlation (rho) by Band and Measure",
+       x = "Measure", y = "Spectral Band") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+print(p1)
+
+# 2. Create a heatmap of p-values
+p2 <- ggplot(spearman_df, aes(x = Measure, y = Band, fill = Significance)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = sprintf("%.4f", P_Value)), color = "black", size = 3) +
+  scale_fill_manual(values = c("p < 0.001" = "#d73027", "p < 0.01" = "#fc8d59", 
+                              "p < 0.05" = "#fee090", "Not Significant" = "#e0e0e0")) +
+  theme_minimal() +
+  labs(title = "Spearman's Correlation P-Values by Band and Measure",
+       x = "Measure", y = "Spectral Band") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+print(p2)
+
+# 3. Create a scatter plot for the most significant correlations
+# Filter for the most significant results (p < 0.01)
+sig_results <- spearman_df[spearman_df$P_Value < 0.01, ]
+
+# If there are significant results, create scatter plots
+if(nrow(sig_results) > 0) {
+  for(i in 1:nrow(sig_results)) {
+    band <- sig_results$Band[i]
+    measure <- sig_results$Measure[i]
+    rho <- sig_results$Rho[i]
+    p_value <- sig_results$P_Value[i]
+    
+    # Read the data for this band
+    file_name <- paste0(band, ".csv")
+    df <- read.csv(file_name, header=TRUE, stringsAsFactors = FALSE)
+    
+    # Create a scatter plot
+    p <- ggplot(df, aes(x = factor(Buried_Arc), y = df[[measure]])) +
+      geom_jitter(width = 0.2, alpha = 0.5, aes(color = factor(Buried_Arc))) +
+      geom_boxplot(alpha = 0.3, outlier.shape = NA) +
+      scale_color_manual(values = c("0" = "#4575b4", "1" = "#d73027"),
+                        labels = c("No Buried Feature", "Buried Feature"),
+                        name = "") +
+      theme_minimal() +
+      labs(title = paste("Relationship between Buried Feature and", measure, "in", band, "Band"),
+           subtitle = paste("Spearman's rho =", round(rho, 3), ", p-value =", format(p_value, digits = 4)),
+           x = "Buried Archaeological Feature", y = measure) +
+      theme(legend.position = "none")
+    
+    print(p)
+  }
+}
+# Load necessary libraries
+library(dplyr)
+library(ggplot2)
+library(reshape2)
+
+# List of files to process
+files <- c('Blue.csv', 'Green.csv', 'NIR.csv', 'Red.csv', 'RedEdge.csv')
+measures <- c('MEAN', 'MEDIAN', 'RANGE', 'STD')
+
+# Create a dataframe to store all statistical test results
+results_df <- data.frame(
+  Band = character(),
+  Measure = character(),
+  Mann_Whitney_P = numeric(),
+  Spearman_Rho = numeric(),
+  Spearman_P = numeric(),
+  stringsAsFactors = FALSE
+)
+
+# Process each file
+for (file in files) {
+  # Extract band name from filename
+  band <- gsub(".csv", "", file)
+  
+  # Read the data
+  df <- read.csv(file, header=TRUE, stringsAsFactors = FALSE)
+  
+  # Perform tests for each measure
+  for (measure in measures) {
+    # Extract measurements by group
+    group0 <- df[df$Buried_Arc == 0, measure]
+    group1 <- df[df$Buried_Arc == 1, measure]
+    
+    # Mann-Whitney U test
+    mw_test <- wilcox.test(group0, group1)
+    
+    # Spearman's correlation
+    sp_test <- cor.test(df[[measure]], df$Buried_Arc, method = 'spearman', exact = FALSE)
+    
+    # Store results
+    results_df <- rbind(results_df, data.frame(
+      Band = band,
+      Measure = measure,
+      Mann_Whitney_P = mw_test$p.value,
+      Spearman_Rho = sp_test$estimate,
+      Spearman_P = sp_test$p.value,
+      stringsAsFactors = FALSE
+    ))
+  }
+}
+
+# Add significance indicators
+results_df$MW_Significance <- cut(results_df$Mann_Whitney_P, 
+                                breaks = c(0, 0.001, 0.01, 0.05, 1), 
+                                labels = c("***", "**", "*", "ns"),
+                                include.lowest = TRUE)
+
+results_df$SP_Significance <- cut(results_df$Spearman_P, 
+                                breaks = c(0, 0.001, 0.01, 0.05, 1), 
+                                labels = c("***", "**", "*", "ns"),
+                                include.lowest = TRUE)
+
+# Sort by importance (using p-values and correlation strength)
+results_df$Importance_Score <- -log10(results_df$Mann_Whitney_P) + abs(results_df$Spearman_Rho) * 10
+results_df <- results_df %>% arrange(desc(Importance_Score))
+
+# Print the top 10 most important measures
+print("Top 10 Most Important Spectral Measures:")
+print(head(results_df, 10))
+
+# Create a visualization of importance scores
+p <- ggplot(results_df, aes(x = reorder(paste(Band, Measure, sep="-"), Importance_Score), 
+                          y = Importance_Score, fill = Band)) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = "Importance of Spectral Measures for Detecting Buried Features",
+       subtitle = "Based on Mann-Whitney p-values and Spearman's correlation strength",
+       x = "Spectral Measure", y = "Importance Score") +
+  theme_minimal() +
+  theme(legend.position = "right")
+
+print(p)
+
+# Create a detailed table with all measures and their significance
+results_table <- results_df %>%
+  mutate(
+    Mann_Whitney_P = sprintf("%.6f %s", Mann_Whitney_P, MW_Significance),
+    Spearman_Result = sprintf("%.3f (p=%.6f) %s", Spearman_Rho, Spearman_P, SP_Significance)
+  ) %>%
+  select(Band, Measure, Mann_Whitney_P, Spearman_Result, Importance_Score)
+
+print("Detailed Results Table:")
+print(results_table)
+
+# Create a summary of which bands and measures are most important
+band_summary <- results_df %>%
+  group_by(Band) %>%
+  summarize(
+    Avg_Importance = mean(Importance_Score),
+    Max_Importance = max(Importance_Score),
+    Significant_Measures = sum(Mann_Whitney_P < 0.05)
+  ) %>%
+  arrange(desc(Avg_Importance))
+
+measure_summary <- results_df %>%
+  group_by(Measure) %>%
+  summarize(
+    Avg_Importance = mean(Importance_Score),
+    Max_Importance = max(Importance_Score),
+    Significant_Bands = sum(Mann_Whitney_P < 0.05)
+  ) %>%
+  arrange(desc(Avg_Importance))
+
+print("Band Importance Summary:")
+print(band_summary)
+
+print("Measure Type Importance Summary:")
+print(measure_summary)
+
+# Create visualizations for band and measure summaries
+p1 <- ggplot(band_summary, aes(x = reorder(Band, Avg_Importance), y = Avg_Importance, fill = Band)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Average Importance by Spectral Band",
+       x = "Band", y = "Average Importance Score") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+p2 <- ggplot(measure_summary, aes(x = reorder(Measure, Avg_Importance), y = Avg_Importance, fill = Measure)) +
+  geom_bar(stat = "identity") +
+  labs(title = "Average Importance by Measure Type",
+       x = "Measure", y = "Average Importance Score") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+print(p1)
+print(p2)
+
+# Create a heatmap of importance scores
+importance_matrix <- dcast(results_df, Band ~ Measure, value.var = "Importance_Score")
+importance_matrix_long <- melt(importance_matrix, id.vars = "Band", variable.name = "Measure", value.name = "Importance")
+
+p3 <- ggplot(importance_matrix_long, aes(x = Measure, y = Band, fill = Importance)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = sprintf("%.1f", Importance)), color = "black", size = 3) +
+  scale_fill_gradient(low = "white", high = "red") +
+  theme_minimal() +
+  labs(title = "Importance Scores by Band and Measure",
+       x = "Measure", y = "Band") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+print(p3)
+
+# Create a summary of the most important combinations
+cat("\
+\
+Summary of Most Important Spectral Measures for Detecting Buried Archaeological Features:\
+")
+cat("---------------------------------------------------------------------------------\
+")
+cat("1. The Red band's MEDIAN and MEAN values are the most significant indicators\
+")
+cat("2. The Blue band's MEDIAN and MEAN values are the second most important\
+")
+cat("3. The Green band's MEDIAN and MEAN values also show strong significance\
+")
+cat("4. Overall, central tendency measures (MEAN and MEDIAN) are more important than dispersion measures (RANGE and STD)\
+")
+cat("5. The NIR band shows some significance but with opposite correlation direction compared to visible bands\
+")
+cat("6. The RedEdge band shows the least importance for detecting buried features\
+")
+cat("---------------------------------------------------------------------------------\
+")
+
+# Load necessary libraries
+library(dplyr)
+library(ggplot2)
+library(caret)
+library(pROC)
+library(ROSE) # For handling class imbalance
+
+# List of files to process
+files <- c('Blue.csv', 'Green.csv', 'NIR.csv', 'Red.csv', 'RedEdge.csv')
+measures <- c('MEAN', 'MEDIAN', 'RANGE') # Excluding STD as requested
+
+# First, let's check the class distribution in one of the files
+sample_df <- read.csv(files[1])
+table(sample_df$Buried_Arc)
+# Install the ROSE package
+install.packages("ROSE", repos="https://cran.rstudio.com/", dependencies=FALSE)
+
+# Now try loading it again
+library(ROSE)
+
+# Check class distribution
+sample_df <- read.csv(files[1])
+table(sample_df$Buried_Arc)
+# Load necessary libraries
+library(dplyr)
+library(ggplot2)
+library(ROSE)
+library(pROC)
+
+# We'll use the 'Red.csv' file since it had strong significance in previous analyses
+file_name <- 'Red.csv'
+df <- read.csv(file_name, header=TRUE, stringsAsFactors = FALSE)
+
+# Subset the dataframe for the predictors and outcome. Use only MEAN, MEDIAN, RANGE
+df_sub <- df %>% select(MEAN, MEDIAN, RANGE, Buried_Arc)
+
+# Check class distribution
+cat('Original Class Distribution:')
+print(table(df_sub$Buried_Arc))
+
+# Due to sample imbalance, use ROSE to generate a balanced dataset
+set.seed(123)
+df_balanced <- ROSE(Buried_Arc ~ ., data = df_sub, seed = 1)$data
+
+cat('Balanced Class Distribution:')
+print(table(df_balanced$Buried_Arc))
+
+# Fit binary logistic regression model on the balanced dataset
+model <- glm(Buried_Arc ~ MEAN + MEDIAN + RANGE, data = df_balanced, family = binomial(link = 'logit'))
+
+# Get predicted probabilities on the balanced dataset
+df_balanced$predicted_prob <- predict(model, type = 'response')
+
+# Classification cutoff at 0.4
+df_balanced$predicted_class <- ifelse(df_balanced$predicted_prob > 0.4, 1, 0)
+
+# Confusion matrix
+confusion <- table(Predicted = df_balanced$predicted_class, Actual = df_balanced$Buried_Arc)
+cat('Confusion Matrix (cutoff = 0.4):\
+')
+print(confusion)
+
+# Compute ROC and AUC
+roc_obj <- roc(df_balanced$Buried_Arc, df_balanced$predicted_prob)
+auc_value <- auc(roc_obj)
+
+# Plot ROC curve
+roc_plot <- ggplot(data = data.frame(tpr = roc_obj$sensitivities, fpr = 1 - roc_obj$specificities), aes(x = fpr, y = tpr)) + 
+  geom_line(color = 'blue') + 
+  geom_abline(intercept = 0, slope = 1, linetype = 'dashed', color = 'red') +
+  labs(title = paste('ROC Curve (AUC =', round(auc_value, 3),')'), x = 'False Positive Rate', y = 'True Positive Rate') +
+  theme_minimal()
+
+print(roc_plot)
+
+# Visualize predicted probabilities distribution by actual class
+prob_plot <- ggplot(df_balanced, aes(x = predicted_prob, fill = factor(Buried_Arc))) + 
+  geom_histogram(position = 'dodge', bins = 20, alpha = 0.7) + 
+  labs(title = 'Distribution of Predicted Probabilities by Actual Class', x = 'Predicted Probability', fill = 'Buried_Arc') + 
+  theme_minimal()
+
+print(prob_plot)
+
+# Output model summary and key results
+cat('Model Summary:\
+')
+print(summary(model))
+
+# Return a list of outputs for reference
+list(
+  confusion_matrix = confusion,
+  auc = auc_value,
+  model_summary = summary(model)
+)
